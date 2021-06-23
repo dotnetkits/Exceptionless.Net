@@ -11,8 +11,7 @@ using Exceptionless.Services;
 using Exceptionless.Storage;
 using Xunit;
 
-namespace Exceptionless.Tests.Serializer
-{
+namespace Exceptionless.Tests.Serializer {
     public abstract class StorageSerializerTestBase {
         private readonly IDependencyResolver _resolver;
         public StorageSerializerTestBase() {
@@ -21,6 +20,7 @@ namespace Exceptionless.Tests.Serializer
             _resolver.Register<IJsonSerializer, DefaultJsonSerializer>();
             _resolver.Register<IExceptionlessLog, InMemoryExceptionlessLog>();
             _resolver.Register<IEnvironmentInfoCollector, DefaultEnvironmentInfoCollector>();
+            _resolver.Register<ExceptionlessConfiguration>(new ExceptionlessConfiguration(_resolver));
             Initialize(_resolver);
         }
 
@@ -55,15 +55,17 @@ namespace Exceptionless.Tests.Serializer
                 newEvent = serializer.Deserialize<Event>(memory);
             }
 
-            Assert.Equal(evt, newEvent);
+            var jsonSerializer = _resolver.GetJsonSerializer();
+            var expected = jsonSerializer.Serialize(evt);
+            var actual = jsonSerializer.Serialize(newEvent);
+
+            Assert.Equal(expected, actual);
         }
 
-        [Fact]
         public virtual void CanSerializeSimpleEvent() {
             AssertEventSerialize(CreateSimpleEvent());
         }
 
-        [Fact]
         public virtual void CanSerializeSimpleDataValues() {
             var evt = CreateSimpleEvent();
             evt.SetVersion("4.1.1972");
@@ -74,21 +76,18 @@ namespace Exceptionless.Tests.Serializer
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeTags() {
             var evt = CreateSimpleEvent();
             evt.AddTags("Critial", "Startup", "AspNetCore");
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeEnvironmentInfo() {
             var evt = CreateSimpleEvent();
             evt.Data[Event.KnownDataKeys.EnvironmentInfo] = _resolver.Resolve<IEnvironmentInfoCollector>().GetEnvironmentInfo();
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeRequestInfo() {
             var evt = CreateSimpleEvent();
             evt.AddRequestInfo(new RequestInfo {
@@ -112,7 +111,6 @@ namespace Exceptionless.Tests.Serializer
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeTraceLogEntries() {
             var evt = CreateSimpleEvent();
             evt.Data[Event.KnownDataKeys.TraceLog] = new List<string> {
@@ -122,21 +120,18 @@ namespace Exceptionless.Tests.Serializer
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeUserInfo() {
             var evt = CreateSimpleEvent();
             evt.SetUserIdentity("Asp.Net Identity", "exceptionless");
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeUserDescription() {
             var evt = CreateSimpleEvent();
             evt.SetUserDescription("noreply@exceptionless.com","system account");
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeManualStackingInfo() {
             var evt = CreateSimpleEvent();
             evt.SetManualStackingInfo("test", new Dictionary<string, string> {
@@ -146,17 +141,21 @@ namespace Exceptionless.Tests.Serializer
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeSimpleError() {
+            var client = new ExceptionlessClient(new ExceptionlessConfiguration(_resolver));
+            var exception = new ArgumentException("The argument cannot be null or empty", "value");
+
             var evt = CreateSimpleEvent();
-            evt.Data[Event.KnownDataKeys.SimpleError] = new ArgumentException("The argument cannot be null or empty", "value").ToSimpleErrorModel(new ExceptionlessClient(new ExceptionlessConfiguration(_resolver)));
+            evt.Data[Event.KnownDataKeys.SimpleError] = exception.ToSimpleErrorModel(client);
             AssertEventSerialize(evt);
         }
 
-        [Fact]
         public virtual void CanSerializeError() {
+            var client = new ExceptionlessClient(new ExceptionlessConfiguration(_resolver));
+            var exception = new ArgumentException("The argument cannot be null or empty", "value");
+
             var evt = CreateSimpleEvent();
-            evt.Data[Event.KnownDataKeys.Error] = new ArgumentException("The argument cannot be null or empty", "value").ToErrorModel(new ExceptionlessClient(new ExceptionlessConfiguration(_resolver)));
+            evt.Data[Event.KnownDataKeys.Error] = exception.ToErrorModel(client);
             AssertEventSerialize(evt);
         }
     }

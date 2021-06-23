@@ -20,22 +20,26 @@ and viewing your project configuration page.
 By default the Exceptionless Client will report all available metadata including potential PII data.
 You can fine tune the collection of information via Data Exclusions or turning off collection completely.
 
-Please visit the wiki https://github.com/exceptionless/Exceptionless.Net/wiki/Configuration#general-data-protection-regulation
+Please visit the documentation https://exceptionless.com/docs/clients/dotnet/private-information/
 for detailed information on how to configure the client to meet your requirements.
 
 -------------------------------------
       ASP.NET Core Integration
 -------------------------------------
-You must import the "Exceptionless" namespace and call the following line
-of code to start reporting unhandled exceptions. The best place to call this
-code is at the first line of the Configure method inside of the Startup class.
+You must import the "Exceptionless" namespace and add the following code to register and configure
+the ExceptionlessClient inside of the ConfigureServices method:
 
-app.UseExceptionless("API_KEY_HERE");
+services.AddExceptionless("API_KEY_HERE");
 
-Alternatively, you can also use the different overloads of the UseExceptionless method
+In order to start gathering unhandled exceptions, you will need to register the Exceptionless
+middleware in the Configure method like this:
+
+app.UseExceptionless();
+
+Alternatively, you can also use the different overloads of the AddExceptionless method
 for different configuration options.
 
-Please visit the wiki https://github.com/exceptionless/Exceptionless.Net/wiki/Sending-Events
+Please visit the documentation https://exceptionless.com/docs/clients/dotnet/sending-events/
 for examples on sending events to Exceptionless.
 
 -------------------------------------
@@ -48,7 +52,7 @@ the following method.
 exception.ToExceptionless().Submit()
 
 Please note that ASP.NET Core doesn't have a static http context. We recommend registering
-the http context accessor. Doing so will allow the request and user information to be populated. 
+the http context accessor. Doing so will allow the request and user information to be populated.
 You can do this by calling the AddHttpContextAccessor while configure services.
 
 services.AddHttpContextAccessor()

@@ -22,7 +22,7 @@ using NLog.Fluent;
 using LogLevel = Exceptionless.Logging.LogLevel;
 
 // example of setting an attribute value in config.
-[assembly: Exceptionless("LhhP1C9gijpSKCslHHCvwdSIz298twx271n1l6xw", ServerUrl = "http://localhost:50000")] 
+[assembly: Exceptionless("LhhP1C9gijpSKCslHHCvwdSIz298twx271n1l6xw", ServerUrl = "http://localhost:5000")] 
 [assembly: ExceptionlessSetting("EnableWelcomeMessage", "True")]
 
 namespace Exceptionless.SampleConsole {
@@ -338,7 +338,7 @@ namespace Exceptionless.SampleConsole {
                 Console.WriteLine("Sending captured events...");
             }
 
-            string path = Path.GetFullPath(@"..\..\Errors\");
+            string path = Path.GetFullPath(Path.Combine("..", "..", "Errors"));
             if (!Directory.Exists(path))
                 return;
 

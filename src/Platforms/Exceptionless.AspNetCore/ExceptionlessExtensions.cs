@@ -7,16 +7,22 @@ using Exceptionless.AspNetCore;
 using Exceptionless.Models;
 using Exceptionless.Models.Data;
 using Exceptionless.Plugins.Default;
-using Exceptionless.Storage;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace Exceptionless {
     public static class ExceptionlessExtensions {
+        /// <summary>
+        /// Adds the Exceptionless middleware for capturing unhandled exceptions and ensures that the Exceptionless pending queue is processed before the host shuts down.
+        /// </summary>
+        /// <param name="app">The target <see cref="IApplicationBuilder"/> to add Exceptionless to.</param>
+        /// <param name="client">Optional pre-configured <see cref="ExceptionlessClient"/> instance to use. If not specified (recommended), the <see cref="ExceptionlessClient"/>
+        /// instance registered in the services collection will be used.</param>
+        /// <returns></returns>
         public static IApplicationBuilder UseExceptionless(this IApplicationBuilder app, ExceptionlessClient client = null) {
             if (client == null)
-                client = ExceptionlessClient.Default;
+                client = app.ApplicationServices.GetService<ExceptionlessClient>() ?? ExceptionlessClient.Default;
 
             // Can be registered in Startup.ConfigureServices via services.AddHttpContextAccessor();
             // this is necessary to obtain Session and Request information outside of ExceptionlessMiddleware
@@ -30,64 +36,31 @@ namespace Exceptionless {
             var diagnosticListener = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
             diagnosticListener?.SubscribeWithAdapter(new ExceptionlessDiagnosticListener(client));
 
-            var lifetime = app.ApplicationServices.GetRequiredService<IApplicationLifetime>();
+            var lifetime = app.ApplicationServices.GetRequiredService<IHostApplicationLifetime>();
             lifetime.ApplicationStopping.Register(() => client.ProcessQueue());
 
             return app.UseMiddleware<ExceptionlessMiddleware>(client);
         }
 
+        [Obsolete("UseExceptionless should be called without an overload, ExceptionlessClient should be configured when adding to services collection using AddExceptionless")]
+        public static IApplicationBuilder UseExceptionless(this IApplicationBuilder app, Action<ExceptionlessConfiguration> configure) {
+            var client = app.ApplicationServices.GetService<ExceptionlessClient>() ?? ExceptionlessClient.Default;
+            configure?.Invoke(client.Configuration);
+            return app.UseExceptionless(client);
+        }
+
+        [Obsolete("UseExceptionless should be called without an overload, ExceptionlessClient should be configured when adding to services collection using AddExceptionless")]
         public static IApplicationBuilder UseExceptionless(this IApplicationBuilder app, IConfiguration configuration) {
-            ExceptionlessClient.Default.Configuration.ReadFromConfiguration(configuration);
-            return app.UseExceptionless(ExceptionlessClient.Default);
+            var client = app.ApplicationServices.GetService<ExceptionlessClient>() ?? ExceptionlessClient.Default;
+            client.Configuration.ReadFromConfiguration(configuration);
+            return app.UseExceptionless(client);
         }
 
+        [Obsolete("UseExceptionless should be called without an overload, ExceptionlessClient should be configured when adding to services collection using AddExceptionless")]
         public static IApplicationBuilder UseExceptionless(this IApplicationBuilder app, string apiKey) {
-            ExceptionlessClient.Default.Configuration.ApiKey = apiKey;
-            return app.UseExceptionless(ExceptionlessClient.Default);
-        }
-
-        /// <summary>
-        /// Sets the configuration from .net configuration settings.
-        /// </summary>
-        /// <param name="config">The configuration object you want to apply the settings to.</param>
-        /// <param name="settings">The configuration settings</param>
-        public static void ReadFromConfiguration(this ExceptionlessConfiguration config, IConfiguration settings) {
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
-
-            if (settings == null)
-                throw new ArgumentNullException(nameof(settings));
-
-            var section = settings.GetSection("Exceptionless");
-
-            string apiKey = section["ApiKey"];
-            if (!String.IsNullOrEmpty(apiKey) && apiKey != "API_KEY_HERE")
-                config.ApiKey = apiKey;
-
-            foreach (var data in section.GetSection("DefaultData").GetChildren())
-                if (data.Value != null)
-                    config.DefaultData[data.Key] = data.Value;
-
-            foreach (var tag in section.GetSection("DefaultTags").GetChildren())
-                config.DefaultTags.Add(tag.Value);
-
-            if (Boolean.TryParse(section["Enabled"], out bool enabled) && !enabled)
-                config.Enabled = false;
-
-            if (Boolean.TryParse(section["IncludePrivateInformation"], out bool includePrivateInformation) && !includePrivateInformation)
-                config.IncludePrivateInformation = false;
-
-            string serverUrl = section["ServerUrl"];
-            if (!String.IsNullOrEmpty(serverUrl))
-                config.ServerUrl = serverUrl;
-
-            string storagePath = section["StoragePath"];
-            if (!String.IsNullOrEmpty(storagePath))
-                config.Resolver.Register(typeof(IObjectStorage), () => new FolderObjectStorage(config.Resolver, storagePath));
-
-            foreach (var setting in section.GetSection("Settings").GetChildren())
-                if (setting.Value != null)
-                    config.Settings[setting.Key] = setting.Value;
+            var client = app.ApplicationServices.GetService<ExceptionlessClient>() ?? ExceptionlessClient.Default;
+            client.Configuration.ApiKey = apiKey;
+            return app.UseExceptionless(client);
         }
 
         /// <summary>

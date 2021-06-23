@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-#if NET45 || (!PORTABLE && !NETSTANDARD1_2)
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
-#endif
 using System.Text;
 using Exceptionless.Configuration;
 using Exceptionless.Dependency;
@@ -27,10 +26,10 @@ namespace Exceptionless.Submission {
 
         public SubmissionResponse PostEvents(IEnumerable<Event> events, ExceptionlessConfiguration config, IJsonSerializer serializer) {
             if (!config.IsValid)
-                return new SubmissionResponse(500, message: "Invalid client configuration settings");
+                return SubmissionResponse.InvalidClientConfig500;
 
             string data = serializer.Serialize(events);
-            string url = String.Format("{0}/events", GetServiceEndPoint(config));
+            string url = $"{GetServiceEndPoint(config)}/events";
 
             HttpResponseMessage response;
             try {
@@ -45,20 +44,24 @@ namespace Exceptionless.Submission {
             } catch (Exception ex) {
                 return new SubmissionResponse(500, exception: ex);
             }
-            
-            int settingsVersion;
-            if (Int32.TryParse(GetSettingsVersionHeader(response.Headers), out settingsVersion))
+
+            if (Int32.TryParse(GetSettingsVersionHeader(response.Headers), out int settingsVersion))
                 SettingsManager.CheckVersion(settingsVersion, config);
 
-            return new SubmissionResponse((int)response.StatusCode, GetResponseMessage(response));
+            var message = GetResponseMessage(response);
+            if ((int)response.StatusCode == 200 && "OK".Equals(message, StringComparison.OrdinalIgnoreCase)) {
+                return SubmissionResponse.Ok200;
+            }
+
+            return new SubmissionResponse((int)response.StatusCode, message);
         }
 
         public SubmissionResponse PostUserDescription(string referenceId, UserDescription description, ExceptionlessConfiguration config, IJsonSerializer serializer) {
             if (!config.IsValid)
-                return new SubmissionResponse(500, message: "Invalid client configuration settings.");
+                return SubmissionResponse.InvalidClientConfig500;
 
             string data = serializer.Serialize(description);
-            string url = String.Format("{0}/events/by-ref/{1}/user-description", GetServiceEndPoint(config), referenceId);
+            string url = $"{GetServiceEndPoint(config)}/events/by-ref/{referenceId}/user-description";
 
             HttpResponseMessage response;
             try {
@@ -74,18 +77,22 @@ namespace Exceptionless.Submission {
                 return new SubmissionResponse(500, exception: ex);
             }
 
-            int settingsVersion;
-            if (Int32.TryParse(GetSettingsVersionHeader(response.Headers), out settingsVersion))
+            if (Int32.TryParse(GetSettingsVersionHeader(response.Headers), out int settingsVersion))
                 SettingsManager.CheckVersion(settingsVersion, config);
 
-            return new SubmissionResponse((int)response.StatusCode, GetResponseMessage(response));
+            var message = GetResponseMessage(response);
+            if ((int)response.StatusCode == 200 && "OK".Equals(message, StringComparison.OrdinalIgnoreCase)) {
+                return SubmissionResponse.Ok200;
+            }
+
+            return new SubmissionResponse((int)response.StatusCode, message);
         }
 
         public SettingsResponse GetSettings(ExceptionlessConfiguration config, int version, IJsonSerializer serializer) {
             if (!config.IsValid)
-                return new SettingsResponse(false, message: "Invalid client configuration settings.");
+                return SettingsResponse.InvalidClientConfig;
 
-            string url = String.Format("{0}/projects/config?v={1}", GetConfigServiceEndPoint(config), version);
+            string url = $"{GetConfigServiceEndPoint(config)}/projects/config?v={version.ToString(CultureInfo.InvariantCulture)}";
 
             HttpResponseMessage response;
             try {
@@ -97,14 +104,14 @@ namespace Exceptionless.Submission {
             }
 
             if (response != null && response.StatusCode == HttpStatusCode.NotModified)
-                return new SettingsResponse(false, message: "Settings have not been modified.");
+                return SettingsResponse.NotModified;
 
             if (response == null || response.StatusCode != HttpStatusCode.OK)
                 return new SettingsResponse(false, message: String.Concat("Unable to retrieve configuration settings: ", GetResponseMessage(response)));
 
             var json = GetResponseText(response);
             if (String.IsNullOrWhiteSpace(json))
-                return new SettingsResponse(false, message: "Invalid configuration settings.");
+                return SettingsResponse.InvalidConfig;
 
             var settings = serializer.Deserialize<ClientConfiguration>(json);
             return new SettingsResponse(true, settings.Settings, settings.Version);
@@ -114,7 +121,7 @@ namespace Exceptionless.Submission {
             if (!config.IsValid)
                 return;
 
-            string url = String.Format("{0}/events/session/heartbeat?id={1}&close={2}", GetHeartbeatServiceEndPoint(config), sessionIdOrUserId, closeSession);
+            string url = $"{GetHeartbeatServiceEndPoint(config)}/events/session/heartbeat?id={sessionIdOrUserId}&close={closeSession.ToString(CultureInfo.InvariantCulture)}";
             try {
                 _client.Value.AddAuthorizationHeader(config.ApiKey);
                 _client.Value.GetAsync(url).ConfigureAwait(false).GetAwaiter().GetResult();
@@ -130,16 +137,16 @@ namespace Exceptionless.Submission {
 #else
             var handler = new HttpClientHandler { UseDefaultCredentials = true };
 #endif
-#if !PORTABLE && !NETSTANDARD1_2
+
             var callback = config.ServerCertificateValidationCallback;
             if (callback != null) {
 #if NET45
-                handler.ServerCertificateValidationCallback = (s,c,ch,p)=>Validate(s,c,ch,p,callback);
+                handler.ServerCertificateValidationCallback = (s,c,ch,p) => Validate(s,c,ch,p,callback);
 #else
-                handler.ServerCertificateCustomValidationCallback = (m,c,ch,p)=>Validate(m,c,ch,p,callback);
+                handler.ServerCertificateCustomValidationCallback = (m,c,ch,p) => Validate(m,c,ch,p,callback);
 #endif
             }
-#endif
+
             if (handler.SupportsAutomaticDecompression)
                 handler.AutomaticDecompression = DecompressionMethods.Deflate | DecompressionMethods.GZip | DecompressionMethods.None;
 
@@ -158,18 +165,16 @@ namespace Exceptionless.Submission {
             return client;
         }
 
-#if !PORTABLE && !NETSTANDARD1_2
 #if NET45
-        private bool Validate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors, Func<CertificateData, bool> callback) {
+        private static bool Validate(object sender, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors, Func<CertificateData, bool> callback) {
             var certData = new CertificateData(sender, certificate, chain, sslPolicyErrors);
             return callback(certData);
         }
 #else
-        private bool Validate(HttpRequestMessage httpRequestMessage, X509Certificate2 certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors, Func<CertificateData, bool> callback) {
+        private static bool Validate(HttpRequestMessage httpRequestMessage, X509Certificate2 certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors, Func<CertificateData, bool> callback) {
             var certData = new CertificateData(httpRequestMessage, certificate, chain, sslPolicyErrors);
             return callback(certData);
         }
-#endif
 #endif
 
         private string GetResponseMessage(HttpResponseMessage response) {
@@ -192,7 +197,7 @@ namespace Exceptionless.Submission {
                 } catch { }
             }
 
-            return !String.IsNullOrEmpty(message) ? message : $"{statusCode} {response.ReasonPhrase}";
+            return !String.IsNullOrEmpty(message) ? message : $"{statusCode.ToString(CultureInfo.InvariantCulture)} {response.ReasonPhrase}";
         }
 
         private string GetResponseText(HttpResponseMessage response) {
@@ -202,7 +207,7 @@ namespace Exceptionless.Submission {
 
             return null;
         }
-        
+
         private string GetSettingsVersionHeader(HttpResponseHeaders headers) {
             IEnumerable<string> values;
             if (headers != null && headers.TryGetValues(ExceptionlessHeaders.ConfigurationVersion, out values))
@@ -210,7 +215,7 @@ namespace Exceptionless.Submission {
 
             return null;
         }
-        
+
         private Uri GetServiceEndPoint(ExceptionlessConfiguration config) {
             var builder = new UriBuilder(config.ServerUrl);
             builder.Path += builder.Path.EndsWith("/") ? "api/v2" : "/api/v2";

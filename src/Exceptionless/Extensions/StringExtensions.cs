@@ -26,18 +26,18 @@ namespace Exceptionless.Extensions {
             if (patternsToMatch == null || value == null)
                 return false;
 
-            if (ignoreCase)
-                value = value.ToLower();
-
             return patternsToMatch.Any(pattern => IsPatternMatch(value, pattern, ignoreCase));
         }
 
         public static bool IsPatternMatch(this string value, string pattern, bool ignoreCase = true) {
-            if (pattern == null || value == null)
-                return false;
+            if (pattern == null)
+                return value == null;
 
             if (pattern.Equals("*"))
                 return true;
+
+            if (value == null)
+                return false;
 
             bool startsWithWildcard = pattern.StartsWith("*");
             if (startsWithWildcard)
@@ -46,22 +46,18 @@ namespace Exceptionless.Extensions {
             bool endsWithWildcard = pattern.EndsWith("*");
             if (endsWithWildcard)
                 pattern = pattern.Substring(0, pattern.Length - 1);
-
-            if (ignoreCase) {
-                value = value.ToLower();
-                pattern = pattern.ToLower();
-            }
-
+            
+            var comparison = ignoreCase ? StringComparison.InvariantCultureIgnoreCase : StringComparison.InvariantCulture;
             if (startsWithWildcard && endsWithWildcard)
-                return value.Contains(pattern);
+                return value.IndexOf(pattern ?? "", comparison) >= 0;
 
             if (startsWithWildcard)
-                return value.EndsWith(pattern);
+                return value.EndsWith(pattern, comparison);
 
             if (endsWithWildcard)
-                return value.StartsWith(pattern);
+                return value.StartsWith(pattern, comparison);
 
-            return value.Equals(pattern);
+            return String.Equals(value, pattern, comparison);
         }
 
         public static string[] SplitAndTrim(this string input, params char[] separator) {

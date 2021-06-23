@@ -45,7 +45,7 @@ namespace Exceptionless.AspNetCore {
             if (config.IncludeQueryString)
                 info.QueryString = context.Request.Query.ToDictionary(exclusionList);
 
-            if (config.IncludePostData)
+            if (config.IncludePostData && !String.Equals(context.Request.Method, "GET", StringComparison.OrdinalIgnoreCase))
                 info.PostData = GetPostData(context, config, exclusionList);
 
             return info;
@@ -131,7 +131,7 @@ namespace Exceptionless.AspNetCore {
             "*SessionId*"
         };
 
-        private static Dictionary<string, string> ToDictionary(this IRequestCookieCollection cookies, IEnumerable<string> exclusions) {
+        private static Dictionary<string, string> ToDictionary(this IRequestCookieCollection cookies, IList<string> exclusions) {
             var d = new Dictionary<string, string>();
 
             foreach (var kvp in cookies) {

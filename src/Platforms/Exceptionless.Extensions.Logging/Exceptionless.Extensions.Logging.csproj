@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <Import Project="..\..\..\build\common.props" />
 
   <PropertyGroup>
@@ -6,20 +6,16 @@
     <AssemblyName>Exceptionless.Extensions.Logging</AssemblyName>
     <AssemblyTitle>Exceptionless provider for Microsoft.Extensions.Logging</AssemblyTitle>
     <Description>Exceptionless provider for Microsoft.Extensions.Logging. $(Description)</Description>
-    <PackageTags>Exceptionless;Microsoft.Extensions.Logging;log;logging</PackageTags>
+    <PackageTags>$(PackageTags);Microsoft.Extensions.Logging</PackageTags>
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup Label="Package">
-    <None Include="readme.txt" />
-  </ItemGroup>
-
-  <ItemGroup Label="Build">
-    <Compile Include="..\..\GlobalAssemblyInfo.cs" Link="Properties\GlobalAssemblyInfo.cs" />
+    <None Include="readme.txt" pack="true" PackagePath="." />
   </ItemGroup>
 
   <ItemGroup Label="Package References">
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="2.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="2.2.0" />
   </ItemGroup>
 
   <ItemGroup>

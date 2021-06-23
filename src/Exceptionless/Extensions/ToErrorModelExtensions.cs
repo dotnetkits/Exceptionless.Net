@@ -1,5 +1,4 @@
-﻿#if !PORTABLE && !NETSTANDARD1_2
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -20,7 +19,7 @@ namespace Exceptionless {
         private static readonly ConcurrentDictionary<string, Module> _moduleCache = new ConcurrentDictionary<string, Module>();
         private static readonly string[] _exceptionExclusions = {
             "@exceptionless", "Data", "HelpLink", "ExceptionContext", "InnerExceptions", "InnerException", "Errors", "Types",
-            "Message", "Source", "StackTrace", "TargetSite", "HResult", 
+            "Message", "Source", "StackTrace", "TargetSite", "HResult",
             "Entries", "StateEntries",  "PersistedState", "Results"
         };
 
@@ -58,7 +57,7 @@ namespace Exceptionless {
                 if (info != null)
                     error.Code = info.GetValue(exception, null).ToString();
             } catch (Exception) { }
-            
+
 #if NET45
             try {
                 if (exception.TargetSite != null) {
@@ -139,16 +138,14 @@ namespace Exceptionless {
             return !String.IsNullOrEmpty(message) ? message : defaultMessage;
         }
 
-        private static ModuleCollection GetLoadedModules(IExceptionlessLog log, bool includeSystem = false, bool includeDynamic = false) {
+        internal static ModuleCollection GetLoadedModules(IExceptionlessLog log, bool includeSystem = false, bool includeDynamic = false) {
             var modules = new ModuleCollection();
-#if !PORTABLE && !NETSTANDARD1_2
             try {
                 int id = 1;
                 foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies()) {
                     if (!includeDynamic && assembly.IsDynamic)
                         continue;
 
-#if !NETSTANDARD1_3 && !NETSTANDARD1_4
                     try {
                         if (!includeDynamic && String.IsNullOrEmpty(assembly.Location))
                             continue;
@@ -156,7 +153,6 @@ namespace Exceptionless {
                         const string message = "An error occurred while getting the Assembly.Location value. This error will occur when when you are not running under full trust.";
                         log.Error(typeof(ExceptionlessClient), ex, message);
                     }
-#endif
 
                     if (!includeSystem) {
                         try {
@@ -179,14 +175,14 @@ namespace Exceptionless {
             } catch (Exception ex) {
                 log.Error(typeof(ExceptionlessClient), ex, "Error loading modules: " + ex.Message);
             }
-#endif
+
             return modules;
         }
 
         private static void PopulateStackTrace(this Error error, Error root, Exception exception, IExceptionlessLog log) {
             StackFrame[] frames = null;
             try {
-                var st = new StackTrace(exception, true);
+                var st = new EnhancedStackTrace(exception);
                 frames = st.GetFrames();
             } catch {}
 
@@ -226,11 +222,9 @@ namespace Exceptionless {
             method.Name = methodBase.Name;
             if (methodBase.DeclaringType != null) {
                 method.DeclaringNamespace = methodBase.DeclaringType.Namespace;
-#if NET45 || NETSTANDARD1_5 || NETSTANDARD2_0
                 if (methodBase.DeclaringType.GetTypeInfo().MemberType == MemberTypes.NestedType && methodBase.DeclaringType.DeclaringType != null)
                     method.DeclaringType = methodBase.DeclaringType.DeclaringType.Name + "+" + methodBase.DeclaringType.Name;
                 else
-#endif
                     method.DeclaringType = methodBase.DeclaringType.Name;
             }
 
@@ -281,20 +275,25 @@ namespace Exceptionless {
 
             return _moduleCache.GetOrAdd(assembly.FullName, k => {
                 var mod = new Module();
-                AssemblyName name = assembly.GetAssemblyName();
+                var name = assembly.GetAssemblyName();
+                string infoVersion = assembly.GetInformationalVersion();
+                string fileVersion = assembly.GetFileVersion();
+
                 if (name != null) {
                     mod.Name = name.Name;
-                    mod.Version = name.Version.ToString();
+                    mod.Version = infoVersion ?? fileVersion ?? name.Version.ToString();
                     byte[] pkt = name.GetPublicKeyToken();
                     if (pkt.Length > 0)
                         mod.Data["PublicKeyToken"] = pkt.ToHex();
+
+                    var version = name.Version.ToString();
+                    if (!String.IsNullOrEmpty(version) && version != mod.Version)
+                        mod.Data["Version"] = name.Version.ToString();
                 }
 
-                string infoVersion = assembly.GetInformationalVersion();
                 if (!String.IsNullOrEmpty(infoVersion) && infoVersion != mod.Version)
                     mod.Data["ProductVersion"] = infoVersion;
 
-                string fileVersion = assembly.GetFileVersion();
                 if (!String.IsNullOrEmpty(fileVersion) && fileVersion != mod.Version)
                     mod.Data["FileVersion"] = fileVersion;
 
@@ -306,13 +305,11 @@ namespace Exceptionless {
                 if (lastWriteTime.HasValue)
                     mod.ModifiedDate = lastWriteTime.Value;
 
-#if NET45 || NETSTANDARD1_5 || NETSTANDARD2_0
                 if (assembly == Assembly.GetEntryAssembly())
                     mod.IsEntry = true;
-#endif
+
                 return mod;
             });
         }
     }
 }
-#endif
